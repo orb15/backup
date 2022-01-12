@@ -1,0 +1,19 @@
+# Note these rules are expressed as regex!
+
+
+# directories to exclude
+.*\\bin
+.*\\aws
+.*\\[Dd]ead [Gg]ames
+.*\\[Dd]ead [Cc]ampaigns
+.*\\[Oo]ld [Cc]ampaigns
+.*\\ipp3
+.*_MACOSX
+E:\\Misc\\gaming\\VTTFoundryData\\Data\\systems\\dnd5e
+E:\\Misc\\gaming\\VTTFoundryData\\Data\\systems\\loser
+E:\\Misc\\gaming\\VTTFoundryData\\Data\\modules
+
+# files to exclude
+[Tt]humbs.db
+DS_Store
+desktop\\.ini

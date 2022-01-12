@@ -3,70 +3,95 @@ package domain
 import (
 	"bufio"
 	"fmt"
-	"log"
 	"os"
 	"regexp"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 const (
-	defaultBucket         = "homebackup-2155"
-	defaultIsLogging      = true
-	defaultExclusionsFile = "exclusions.txt"
-	defaultBaseDrive      = "E"
-	defaultBaseDir        = "Misc"
-	defaultSharedProfile  = "s3-only"
+	defaultDryrunBucket         = "dryrun-2155"
+	defaultExclusionsFile       = "exclusions.txt"
+	defaultBackupDirectivesFile = "backup.txt"
+	defaultSharedProfile        = "s3-only"
+	defaultAwsRegion            = "us-east-2"
+
+	defaultFileCountEstimate = 25000
+
+	defaultHashRoutines                   = 100
+	defaultHashEffortChannelMaxErrorCount = 25
+	defaultAllowedFailedHashCount         = 25
+
+	defaultStorageRoutines            = 100
+	defaultStorageChannelMaxErrorRate = 25
+	defaultStorageRetryCount          = 5
 )
 
-//Config is the config
+//Config holds core info about the app
 type Config interface {
-	Bucket() string
-	IsLogging() bool
-	Logger() log.Logger
-	BaseDir() string
+	DryrunBucket() string
+	Region() string
 	AwsProfile() string
-	Prefix() string
-	BasePath() string
+	Bucket() string
+
+	Dryrun() bool
+	Start() time.Time
+	Logger() *zap.SugaredLogger
+
+	Exclusions() []*Exclusion
+	BasePaths() []string
+	FileCountEstimate() int
+
+	HashRoutinesCount() int
+	MaxHashChannelErrorCount() int
+	MaxAllowedHashFailures() int
+
+	StorageRoutinesCount() int
+	MaxStorageChannelErrorCount() int
+	StorageRetryCount() int
+
+	String() string
 }
 
 type appConfig struct {
-	bucket       string
-	isLogging    bool
-	exclusions   []*regexp.Regexp
-	logger       log.Logger
-	baseDir      string
-	basePath     string
-	awsProfile   string
-	objectPrefix string
+	dryrunBucket                  string
+	region                        string
+	awsProfile                    string
+	bucket                        string
+	dryrun                        bool
+	start                         time.Time
+	logger                        *zap.SugaredLogger
+	exclusionsFile                string
+	backupFile                    string
+	exclusions                    []*Exclusion
+	basePaths                     []string
+	fileCountEstimate             int
+	hashRoutines                  int
+	maxHashChannelErrorAllowed    int
+	allowedHashFailCount          int
+	storageRoutines               int
+	maxStorageChannelErrorAllowed int
+	storageRetryCount             int
 }
 
 //NewConfig does just what it says on the tin
-func NewConfig(prefix string) (*appConfig, error) {
-	return defaultConfig(prefix)
+func NewConfig(cmdOpts *CommandOpts) (*appConfig, error) {
+	return newConfig(cmdOpts)
 }
 
-//Bucket returns the target bucket
-func (ac *appConfig) Bucket() string {
-	return ac.bucket
+//DryrunBucket returns the name of the bucket used during dryruns
+func (ac *appConfig) DryrunBucket() string {
+	return ac.dryrunBucket
 }
 
-//Logger returns the logger
-func (ac *appConfig) Logger() log.Logger {
-	return ac.logger
-}
-
-//IsLogging returns true if logging enabled
-func (ac *appConfig) IsLogging() bool {
-	return ac.isLogging
-}
-
-//BaseDir returns the base directory where backups begin
-func (ac *appConfig) BaseDir() string {
-	return ac.baseDir
-}
-
-//BasePath returns the base drive and directory where backups begin
-func (ac *appConfig) BasePath() string {
-	return ac.basePath
+//Region returns the AWS region where the buckets will be stored
+func (ac *appConfig) Region() string {
+	return ac.region
 }
 
 //AwsProfile returns the AWS profile to use for accessing S3 (see $HOME/.aws)
@@ -74,58 +99,272 @@ func (ac *appConfig) AwsProfile() string {
 	return ac.awsProfile
 }
 
-//Prefix returns the prefix that will be prepended to every object stored in S3 on a given run
-func (ac *appConfig) Prefix() string {
-	return ac.objectPrefix
+//Bucket returns the name of the bucket to which all objects will be stored
+func (ac *appConfig) Bucket() string {
+	return ac.bucket
+}
+
+//Dryrun returns true if the user is asking for a dry run
+func (ac *appConfig) Dryrun() bool {
+	return ac.dryrun
+}
+
+//Start returns the time (time.Now()) since program execution began
+func (ac *appConfig) Start() time.Time {
+	return ac.start
+}
+
+//Logger returns the logger
+func (ac *appConfig) Logger() *zap.SugaredLogger {
+	return ac.logger
+}
+
+//Exclusions returns all exclusions in the exclusions file
+func (ac *appConfig) Exclusions() []*Exclusion {
+	return ac.exclusions
+}
+
+//BasePaths returns the base drive and directory where backups begin
+func (ac *appConfig) BasePaths() []string {
+	return ac.basePaths
+}
+
+//FileCountEstimate returns the estimated number of files that will be sent to S3
+func (ac *appConfig) FileCountEstimate() int {
+	return ac.fileCountEstimate
+}
+
+//HashRoutinesCount returns the number of go routines to use when hashing all files to be transferred
+func (ac *appConfig) HashRoutinesCount() int {
+	return ac.hashRoutines
+}
+
+//MaxHashChannelErrorCount returns the max number of errors a hash routine can experience before stopping that routine
+func (ac *appConfig) MaxHashChannelErrorCount() int {
+	return ac.maxHashChannelErrorAllowed
+}
+
+//MaxAllowedHashFailures returns the max number of errors allowed across all routines before overall S3 operations are aborted
+func (ac *appConfig) MaxAllowedHashFailures() int {
+	return ac.allowedHashFailCount
+}
+
+//StorageRoutinesCount returns the number of go routines to use when storing files to aws
+func (ac *appConfig) StorageRoutinesCount() int {
+	return ac.storageRoutines
+}
+
+//MaxStorageChannelErrorCount returns the max number of errors a storage routine can experience before stopping that routine
+func (ac *appConfig) MaxStorageChannelErrorCount() int {
+	return ac.maxStorageChannelErrorAllowed
+}
+
+//StorageRetryCount returns the number of retries (if any) PutObject should be called before giving up
+func (ac *appConfig) StorageRetryCount() int {
+	return ac.storageRetryCount
 }
 
 //Reads exclusions from a flat file. Each line is a regex indicating a location in the basedir
 //to be excluded
-func (ac *appConfig) readExclusions() ([]*regexp.Regexp, error) {
-	file, err := os.Open(defaultExclusionsFile)
+func (ac *appConfig) readExclusions() ([]*Exclusion, error) {
+
+	logger := ac.logger
+	defer logger.Sync()
+
+	file, err := os.Open(ac.exclusionsFile)
 	if err != nil {
-		return nil, fmt.Errorf("unable to open exclusions file: %s", defaultExclusionsFile)
+		return nil, fmt.Errorf("unable to open exclusions file: %s", ac.exclusionsFile)
 	}
 	defer func() {
 		if err = file.Close(); err != nil {
-			fmt.Printf("failed to close exclusions file: %s on defered close\n", defaultExclusionsFile)
+			logger.Errorw("failed to close exclusions file on deferred close\n", "path", ac.exclusionsFile, "meta", Core)
 		}
 	}()
 
 	scanner := bufio.NewScanner(file)
-	regexes := make([]*regexp.Regexp, 0)
+	exclusions := make([]*Exclusion, 0)
 
+	index := 0
 	for scanner.Scan() {
+
 		line := scanner.Text()
-		regex, err := regexp.Compile(line)
+
+		//skip some lines in this file
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		if len(line) == 0 {
+			continue
+		}
+
+		//assign this rule an index
+		index++
+
+		//convert to regex & add it to the list of rules
+		rgx, err := regexp.Compile(line)
 		if err != nil {
 			return nil, fmt.Errorf("failed to compile exclusion: '%s' with error: %v", line, err)
 		}
-		regexes = append(regexes, regex)
+		ex := &Exclusion{
+			Id:    index,
+			Raw:   line,
+			Regex: rgx,
+		}
+		logger.Debugw("adding exclusion rule", "id", index, "rule", line, "meta", Exclude)
+		exclusions = append(exclusions, ex)
 	}
 
-	return regexes, nil
+	logger.Infow("added exclusion rules from exclusions file", "ruleCount", len(exclusions), "path", ac.exclusionsFile, "meta", Exclude)
+	return exclusions, nil
 }
 
-func defaultConfig(prefix string) (*appConfig, error) {
+func (ac *appConfig) readBackupDirectives() error {
+	logger := ac.logger
+	defer logger.Sync()
 
-	c := &appConfig{
-		bucket:       defaultBucket,
-		isLogging:    defaultIsLogging,
-		baseDir:      defaultBaseDir,
-		awsProfile:   defaultSharedProfile,
-		objectPrefix: prefix,
+	file, err := os.Open(ac.backupFile)
+	if err != nil {
+		return fmt.Errorf("unable to open backup directives file: %s", ac.backupFile)
+	}
+	defer func() {
+		if err = file.Close(); err != nil {
+			logger.Errorw("failed to close backup file on deferred close\n", "path", ac.backupFile, "meta", Core)
+		}
+	}()
+
+	//create a regex for validating the file contents - checks for drive letter and proper slash (eg C:\)
+	const drivePattern = `^[A-Z]:\\.*`
+	regx := regexp.MustCompile(drivePattern)
+
+	paths := make([]string, 0)
+
+	index := 0
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+
+		line := scanner.Text()
+		line = strings.TrimSpace(line)
+
+		//skip some lines in this file
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		if len(line) == 0 {
+			continue
+		}
+		index++
+
+		//ensure drive letter, colon and double slashes
+		if !regx.MatchString(line) {
+			fmt.Println(line)
+			return fmt.Errorf(`%s line: %d defines invalid backup location. Must be of the format: C:\... `, ac.backupFile, index)
+		}
+
+		//check to make sure slashes are always in pairs
+		// slashCount := strings.Count(line, `\`)
+		// if (slashCount % 2) != 0 {
+		// 	return fmt.Errorf(`%s line: %d defines invalid backup location. All slashes must be double slashes (\\ not \)`, ac.backupFile, index)
+		// }
+
+		paths = append(paths, line)
 	}
 
-	//read exclusions from flat file
+	if len(paths) == 0 {
+		return fmt.Errorf("no backup directories specified in file: %s. Nothing to do", ac.backupFile)
+	}
+
+	//assign the paths to the config object
+	ac.basePaths = paths
+
+	logger.Infow("created backup directory list from file", "path", ac.backupFile, "directoryCount", len(paths), "meta", Chat)
+	return nil
+}
+
+func (ac *appConfig) String() string {
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("Dryrun Bucket: %s\n", ac.dryrunBucket))
+	sb.WriteString(fmt.Sprintf("Dryrun Enabled: %t\n", ac.dryrun))
+	sb.WriteString(fmt.Sprintf("Exclusions File: %s\n", ac.exclusionsFile))
+	sb.WriteString(fmt.Sprintf("Exclusions Count: %d\n", len(ac.exclusions)))
+	sb.WriteString(fmt.Sprintf("Base Paths: %s\n", ac.basePaths))
+	sb.WriteString(fmt.Sprintf("AWS Profile: %s\n", ac.awsProfile))
+	sb.WriteString(fmt.Sprintf("AWS Region: %s\n", ac.region))
+	sb.WriteString(fmt.Sprintf("Target Bucket: %s\n", ac.bucket))
+	sb.WriteString(fmt.Sprintf("Number of Hash Routines: %d\n", ac.hashRoutines))
+	sb.WriteString(fmt.Sprintf("Number of Storage Routines: %d\n", ac.storageRoutines))
+	sb.WriteString(fmt.Sprintf("Storage Retry Count: %d\n", ac.storageRetryCount))
+
+	return sb.String()
+}
+
+func newConfig(cmdOpts *CommandOpts) (*appConfig, error) {
+
+	//create default config
+	c := &appConfig{
+		dryrunBucket:                  defaultDryrunBucket,
+		region:                        defaultAwsRegion,
+		awsProfile:                    defaultSharedProfile,
+		bucket:                        makeUniqueBucketName(),
+		dryrun:                        cmdOpts.Dryrun,
+		start:                         time.Now(),
+		exclusionsFile:                defaultExclusionsFile,
+		backupFile:                    defaultBackupDirectivesFile,
+		fileCountEstimate:             defaultFileCountEstimate,
+		hashRoutines:                  defaultHashRoutines,
+		maxHashChannelErrorAllowed:    defaultHashEffortChannelMaxErrorCount,
+		allowedHashFailCount:          defaultAllowedFailedHashCount,
+		storageRoutines:               defaultStorageRoutines,
+		maxStorageChannelErrorAllowed: defaultStorageChannelMaxErrorRate,
+		storageRetryCount:             defaultStorageRetryCount,
+	}
+
+	//create logger with INFO level enabled
+	zapConfig := zap.Config{
+		Encoding:    "json",
+		OutputPaths: []string{"stderr"},
+		Level:       zap.NewAtomicLevelAt(zapcore.InfoLevel),
+		EncoderConfig: zapcore.EncoderConfig{
+			MessageKey:  "message",
+			LevelKey:    "level",
+			EncodeLevel: zapcore.CapitalLevelEncoder,
+			TimeKey:     "time",
+			EncodeTime:  zapcore.ISO8601TimeEncoder,
+		},
+	}
+
+	//if debug logging is requested, set the logger to that level instead
+	if cmdOpts.UseDebugLogger {
+		zapConfig.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
+	}
+
+	//build a sugared logger from the config
+	zapLogger, err := zapConfig.Build()
+	if err != nil {
+		return nil, err
+	}
+	c.logger = zapLogger.Sugar()
+	defer c.logger.Sync()
+	c.logger.Infow("zap logger configured and available", "meta", Chat)
+
+	//read and compile regex exclusions from flat file
 	exclusions, err := c.readExclusions()
 	if err != nil {
 		return nil, err
 	}
-
-	//create base path
-	c.basePath = defaultBaseDrive + ":\\" + c.baseDir
-
 	c.exclusions = exclusions
+
+	//read backup directives from file
+	err = c.readBackupDirectives()
+	if err != nil {
+		return nil, err
+	}
+
 	return c, nil
+}
+
+func makeUniqueBucketName() string {
+	dateName := time.Now().Format("02Jan2006")
+	uid := uuid.New()
+	return dateName + "-" + uid.String()
 }

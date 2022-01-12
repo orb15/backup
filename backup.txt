@@ -1,0 +1,4 @@
+# folders (not files) we want to back up. Note that there is no need to "escape" the path separator '\' here
+
+E:\Misc
+E:\Digital Camera Images
