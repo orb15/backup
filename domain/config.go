@@ -40,7 +40,6 @@ type Config interface {
 	Bucket() string
 
 	Dryrun() bool
-	Start() time.Time
 	Logger() *zap.SugaredLogger
 
 	Exclusions() []*Exclusion
@@ -64,7 +63,6 @@ type appConfig struct {
 	awsProfile                    string
 	bucket                        string
 	dryrun                        bool
-	start                         time.Time
 	logger                        *zap.SugaredLogger
 	exclusionsFile                string
 	backupFile                    string
@@ -107,11 +105,6 @@ func (ac *appConfig) Bucket() string {
 //Dryrun returns true if the user is asking for a dry run
 func (ac *appConfig) Dryrun() bool {
 	return ac.dryrun
-}
-
-//Start returns the time (time.Now()) since program execution began
-func (ac *appConfig) Start() time.Time {
-	return ac.start
 }
 
 //Logger returns the logger
@@ -218,6 +211,7 @@ func (ac *appConfig) readExclusions() ([]*Exclusion, error) {
 	return exclusions, nil
 }
 
+//reads which directories to backup from a file
 func (ac *appConfig) readBackupDirectives() error {
 	logger := ac.logger
 	defer logger.Sync()
@@ -280,6 +274,7 @@ func (ac *appConfig) readBackupDirectives() error {
 	return nil
 }
 
+//stringify the config for display
 func (ac *appConfig) String() string {
 	var sb strings.Builder
 
@@ -298,6 +293,7 @@ func (ac *appConfig) String() string {
 	return sb.String()
 }
 
+//create a config based on defaults then override those defaults with sommand line opts
 func newConfig(cmdOpts *CommandOpts) (*appConfig, error) {
 
 	//create default config
@@ -307,7 +303,6 @@ func newConfig(cmdOpts *CommandOpts) (*appConfig, error) {
 		awsProfile:                    defaultSharedProfile,
 		bucket:                        makeUniqueBucketName(),
 		dryrun:                        cmdOpts.Dryrun,
-		start:                         time.Now(),
 		exclusionsFile:                defaultExclusionsFile,
 		backupFile:                    defaultBackupDirectivesFile,
 		fileCountEstimate:             defaultFileCountEstimate,
@@ -363,8 +358,10 @@ func newConfig(cmdOpts *CommandOpts) (*appConfig, error) {
 	return c, nil
 }
 
+//create a new bucket name based on date and UUID
 func makeUniqueBucketName() string {
 	dateName := time.Now().Format("02Jan2006")
+	dateName = strings.ToLower(dateName)
 	uid := uuid.New()
 	return dateName + "-" + uid.String()
 }

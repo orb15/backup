@@ -11,6 +11,7 @@ import (
 	"backup/domain"
 )
 
+//sets up and kicks off the multthreaded hashing
 func hashAllFiles(appConfig domain.Config, objectsList []*domain.FileInfo) {
 
 	logger := appConfig.Logger()
@@ -41,10 +42,11 @@ func hashAllFiles(appConfig domain.Config, objectsList []*domain.FileInfo) {
 	logger.Infow("waiting for hashing to complete...", "meta", domain.Chat)
 	wg.Wait()
 
-	hashTime := time.Since(hashStart)
+	hashTime := prettyTime(time.Since(hashStart))
 	logger.Infow("hashing is complete", "hashTotalTime", hashTime, "meta", domain.Chat)
 }
 
+//routine to hash files in the channel
 func hashFilesInChannel(appConfig domain.Config, ch chan *domain.FileInfo, wg *sync.WaitGroup) {
 	logger := appConfig.Logger()
 	defer logger.Sync()

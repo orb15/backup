@@ -11,6 +11,9 @@ import (
 
 func main() {
 
+	//note start time
+	startTime := time.Now()
+
 	//flags handling
 	debugLoggingPtr := flag.Bool("debug", false, "set to enable debug logging")
 	dryrunPtr := flag.Bool("dryrun", false, "set to enable dryrun (no aws calls)")
@@ -22,7 +25,11 @@ func main() {
 	}
 
 	//create config with defaults overriden by app params
-	appConfig := buildConfig(cmdOpts)
+	appConfig, err := domain.NewConfig(cmdOpts)
+	if err != nil {
+		fmt.Printf("FATAL: configuration error: %v\n", err)
+		os.Exit(1)
+	}
 
 	//prep the logger now that we know it is ready
 	logger := appConfig.Logger()
@@ -65,22 +72,11 @@ func main() {
 	}
 
 	//display total run time
-	logger.Infow("total execution time", "time", time.Since(appConfig.Start()), "meta", domain.Stat)
+	totalTime := prettyTime(time.Since(startTime))
+	logger.Infow("total execution time", "time", totalTime, "meta", domain.Stat)
 
 	//after all logging, print a list of failed files
 	if !appConfig.Dryrun() && len(failedFilesDetails) > 0 {
 		fmt.Println(failedFilesDetails)
 	}
-}
-
-func buildConfig(cmdOpts *domain.CommandOpts) domain.Config {
-
-	//build a new app config
-	cfg, err := domain.NewConfig(cmdOpts)
-	if err != nil {
-		fmt.Printf("FATAL: configuration error: %v\n", err)
-		os.Exit(1)
-	}
-
-	return cfg
 }

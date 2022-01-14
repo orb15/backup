@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"math"
 	"os"
 	"strings"
 	"sync"
@@ -28,6 +27,7 @@ var awsRegionToLocationConstraintMap = map[string]s3types.BucketLocationConstrai
 	"us-east-2": s3types.BucketLocationConstraintUsEast2,
 }
 
+//wtop-level function to setup AWS bucket and kickoff file writing
 func writeObjectsToAws(appConfig domain.Config, objectsList []*domain.FileInfo) error {
 
 	//create a context to use with all AWS calls
@@ -70,12 +70,15 @@ func writeObjectsToAws(appConfig domain.Config, objectsList []*domain.FileInfo) 
 		return fmt.Errorf("unable to create bucket: %s error: %v", bucket, err)
 	}
 
+	appConfig.Logger().Infow("bucket created successfully", "bucketName", bucket, "region", region, "meta", domain.Aws)
+
 	//actually write the objects to s3
 	writeAllObjectsToS3(ctx, s3Client, appConfig, objectsList)
 
 	return nil
 }
 
+//manages multithreaded approach to sending files to S3
 func writeAllObjectsToS3(ctx context.Context, s3Client *s3.Client, appConfig domain.Config, objectsList []*domain.FileInfo) {
 	logger := appConfig.Logger()
 	defer logger.Sync()
@@ -111,10 +114,11 @@ func writeAllObjectsToS3(ctx context.Context, s3Client *s3.Client, appConfig dom
 	logger.Infow("waiting for storing to complete...", "meta", domain.Chat)
 	wg.Wait()
 
-	storeTime := time.Since(storeStart)
+	storeTime := prettyTime(time.Since(storeStart))
 	logger.Infow("storing is complete", "totalTime", storeTime, "meta", domain.Stat)
 }
 
+//routine to read files from channel and store to S3.
 func storeFilesInChannel(ctx context.Context, s3Client *s3.Client, appConfig domain.Config, objectsList []*domain.FileInfo, ch chan *domain.FileInfo, wg *sync.WaitGroup) {
 	logger := appConfig.Logger()
 	defer logger.Sync()
@@ -179,13 +183,12 @@ func storeFilesInChannel(ctx context.Context, s3Client *s3.Client, appConfig dom
 						break
 					}
 
-					//a retry is possible - calculate a Duration based on exponential backoff (thanks Go math lib for sucking here!)
-					exponentialRetryDelayString := fmt.Sprintf("%1.fs", math.Pow(2, float64(storageErrorCount)))
-					d, err := time.ParseDuration(exponentialRetryDelayString)
+					//a retry is possible - calculate a backoff delay
+					backoffDuration, err := calcBackoff(storageErrorCount)
 					if err != nil { //failed to parse the duration - should not happen, right? Right?
-						logger.Errorw("failed to parse exponential duration", "duration", exponentialRetryDelayString, "err", err, "meta", domain.Err)
+						logger.Errorw("unable to calculate backoff duration", "err", err, "meta", domain.Err)
 					} else {
-						time.Sleep(d) //sleep this thread and retry
+						time.Sleep(backoffDuration) //sleep this thread and retry
 					}
 				} else { //storage success, leave the retry loop
 					break
@@ -228,6 +231,7 @@ func toKey(filename string) string {
 	return strings.ReplaceAll(filename, "\\", "/")
 }
 
+//manages a dryrun from an AWS perspective
 func handleDryrun(ctx context.Context, s3Client *s3.Client, appConfig domain.Config, objectsList []*domain.FileInfo) error {
 	logger := appConfig.Logger()
 	defer logger.Sync()

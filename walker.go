@@ -8,6 +8,7 @@ import (
 	"backup/domain"
 )
 
+//walks each path in each directory to be archived and builds a list of files that need to be backed up
 func buildFileList(appConfig domain.Config) ([]*domain.FileInfo, error) {
 	logger := appConfig.Logger()
 	defer logger.Sync()
@@ -70,6 +71,7 @@ func buildFileList(appConfig domain.Config) ([]*domain.FileInfo, error) {
 	return allInfo, nil
 }
 
+//determines if any object (file) should be excluded from the backup because of a rule
 func skipThisObject(appConfig domain.Config, path string, info os.FileInfo) bool {
 	logger := appConfig.Logger()
 	defer logger.Sync()

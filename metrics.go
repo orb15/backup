@@ -7,6 +7,7 @@ import (
 	"backup/domain"
 )
 
+//calulates stats regarding which files will be stored/excluded. Also returns a list of files to be stored
 func displayFileStats(appConfig domain.Config, objectsList []*domain.FileInfo) []*domain.FileInfo {
 
 	logger := appConfig.Logger()
@@ -38,6 +39,7 @@ func displayFileStats(appConfig domain.Config, objectsList []*domain.FileInfo) [
 	return saveThese
 }
 
+//counts and displays files that failed hashing
 func displayBadHashes(appConfig domain.Config, objectsList []*domain.FileInfo) bool {
 	defer appConfig.Logger().Sync()
 
@@ -53,6 +55,7 @@ func displayBadHashes(appConfig domain.Config, objectsList []*domain.FileInfo) b
 	return failedHashCount >= appConfig.MaxAllowedHashFailures()
 }
 
+//displays stats regarding files that were stored ort failed to store. Also returns a formmatted string of all failed files
 func displayStorageStats(appConfig domain.Config, objectsList []*domain.FileInfo) string {
 
 	logger := appConfig.Logger()
@@ -73,7 +76,7 @@ func displayStorageStats(appConfig domain.Config, objectsList []*domain.FileInfo
 			success++
 		} else {
 			failed++
-			sb.WriteString(fmt.Sprintf("%s\n", o.FullName))
+			sb.WriteString(fmt.Sprintf("%s [%d]\n", o.FullName, o.Size))
 		}
 	}
 	logger.Infow("number of objects successfully stored", "count", success, "meta", domain.Stat)
