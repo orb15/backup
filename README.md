@@ -18,13 +18,16 @@ Backup is a golang-based quick and dirty tool to back up local disks to AWS S3. 
 Better than AWS console? Ehh, I am seeing 25K files / 19GB from 1 spinning disk hashed and sent to S3 in 2h30m. 99.98% of all transfers were successful  
 &nbsp;&nbsp;&nbsp;&nbsp;Test Machine Specs: 4phys/8virtual 3.5Gz CPU with 16GB RAM. HDD is WD Black 7200RPM 1TB. File fragmentation is low to moderate  
 &nbsp;&nbsp;&nbsp;&nbsp;Network Bandwidth: 30Mbps sustained during transfer
+&nbsp;&nbsp;&nbsp;&nbsp;During hashing: HDD is the performance limiter with plenty of room on CPU and RAM
+&nbsp;&nbsp;&nbsp;&nbsp;During transfer: network bandwidth is the performance limiter with almost no CPU, RAM or Disk access
 
-# Limitations
+# Limitations and Improvements
 * developed on windows since that is where I needed it. There are a couple of places with Windows-isms that need to be addressed
 * need to extend command line options for a dozen or so params. Right now most config defaults to what I needed
 * probably should write all failures to a user-specified file for later post-processing or even use this file as the basis for a targeted re-upload to complete an archive
 * probably need to allow users to specify bucket attributes beyond the very basic ones hardcoded in the system (applying ACLs, setting lifecycle stuff etc)
 * need to tune the multithreading parameters to optimize for workload
+* may want to move file hashing to occur just before file transfer - might improve efficiency since file isn't opened and closed twice - once to hash and then again to transfer. May have unexpectedly bad impact on transfer performance though given that md5 hashing performance is already disk bound
 
 # Security
 * relies on external AWS credentials file stored in the usual location(s). See AWS docs for how to configure AWS for secure command line operations

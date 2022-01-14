@@ -189,6 +189,7 @@ func storeFilesInChannel(ctx context.Context, s3Client *s3.Client, appConfig dom
 						logger.Errorw("unable to calculate backoff duration", "err", err, "meta", domain.Err)
 					} else {
 						time.Sleep(backoffDuration) //sleep this thread and retry
+						f.Seek(0, 0)                //move file pointer back to head of file. Needed? Not sure yet.
 					}
 				} else { //storage success, leave the retry loop
 					break

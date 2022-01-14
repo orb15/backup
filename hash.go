@@ -1,10 +1,6 @@
 package main
 
 import (
-	"crypto/md5"
-	"encoding/base64"
-	"io"
-	"os"
 	"sync"
 	"time"
 
@@ -66,27 +62,14 @@ func hashFilesInChannel(appConfig domain.Config, ch chan *domain.FileInfo, wg *s
 		filesProcessed++
 		filename := fi.FullName
 
-		//open the file and hash it
-		f, err := os.Open(filename)
+		hash, err := hashFile(filename)
 		if err != nil {
 			errCount++
-			logger.Errorw("failed to open file for hashing", "path", filename, "err", err, "meta", domain.Err)
+			logger.Errorw("failed to hash file", "path", filename, "err", err, "meta", domain.Err)
 			fi.HashSuccess = false
 		} else {
-
-			h := md5.New()
-			if _, err := io.Copy(h, f); err != nil {
-				errCount++
-				logger.Errorw("failed to copy file for hashing", "path", filename, "err", err, "meta", domain.Err)
-				fi.HashSuccess = false
-			} else {
-				fi.Hash = base64.StdEncoding.EncodeToString(h.Sum(nil))
-				fi.HashSuccess = true
-			}
-			err := f.Close()
-			if err != nil {
-				logger.Warnw("failed to close file after hashing", "path", fi.FullName, "meta", domain.Hash)
-			}
+			fi.Hash = hash
+			fi.HashSuccess = true
 		}
 
 		//exit on excessive errors

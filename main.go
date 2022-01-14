@@ -59,7 +59,7 @@ func main() {
 		logger.Infow("skipping file hashing because of dryrun", "meta", domain.Chat)
 	}
 
-	//actually write objects to AWS (dry run handled internal to this routine to allow as much execution as possible)
+	//actually write objects to AWS (dry run is handled internal to this routine to allow as much execution as possible)
 	err = writeObjectsToAws(appConfig, objectsToStore)
 	if err != nil {
 		logger.Fatalw("critical AWS failure", "err", err, "meta", domain.Err)
