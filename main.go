@@ -59,24 +59,32 @@ func main() {
 		logger.Infow("skipping file hashing because of dryrun", "meta", domain.Chat)
 	}
 
-	//actually write objects to AWS (dry run is handled internal to this routine to allow as much execution as possible)
+	//actually write objects to AWS (dry run is handled internally to this routine to allow as much execution as possible)
 	err = writeObjectsToAws(appConfig, objectsToStore)
 	if err != nil {
 		logger.Fatalw("critical AWS failure", "err", err, "meta", domain.Err)
 	}
 
-	//display a count of files that failed to be stored
-	var failedFilesDetails string
+	//handle files that failed to be stored, if any
 	if !appConfig.Dryrun() {
-		failedFilesDetails = displayStorageStats(appConfig, allObjectsList)
+
+		//determine file failures if any
+		failedFilesDetails := displayStorageStats(appConfig, allObjectsList)
+
+		//hmmm - what to do on no failures? Erase existing failures file? Leave it? Gonna leave it for now...
+		if failedFilesDetails.HasFailures {
+			//write the failure file
+			err := writeFailureFile(appConfig, failedFilesDetails)
+			if err != nil {
+				logger.Errorw("failed to write backup failures file", "path", appConfig.FailuresFilepath(), "err", err, "meta", domain.Err)
+			} else {
+				logger.Infow("failure filewritten", "path", appConfig.FailuresFilepath(), "meta", domain.Chat)
+			}
+		}
 	}
 
 	//display total run time
 	totalTime := prettyTime(time.Since(startTime))
 	logger.Infow("total execution time", "time", totalTime, "meta", domain.Stat)
 
-	//after all logging, print a list of failed files
-	if !appConfig.Dryrun() && len(failedFilesDetails) > 0 {
-		fmt.Println(failedFilesDetails)
-	}
 }

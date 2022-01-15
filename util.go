@@ -1,8 +1,10 @@
 package main
 
 import (
+	"backup/domain"
 	"crypto/md5"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -71,4 +73,21 @@ func calcBackoff(exponent int) (time.Duration, error) {
 	}
 	exponentialRetryDelayString := fmt.Sprintf("%ds", total) //eg 16s for 2^4
 	return time.ParseDuration(exponentialRetryDelayString)
+}
+
+//write a json-formatted file containing failure information
+func writeFailureFile(appConfig domain.Config, failureInfo *domain.BackupFailures) error {
+
+	//create indented json for easy human readability
+	jsonBytes, err := json.MarshalIndent(failureInfo, "", " ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal failed files json structure: %v", err)
+	}
+
+	//actually write the file
+	err = os.WriteFile(appConfig.FailuresFilepath(), jsonBytes, 0664)
+	if err != nil {
+		return fmt.Errorf("failed to write failed files file: %s err: %v", appConfig.FailuresFilepath(), err)
+	}
+	return nil
 }

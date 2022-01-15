@@ -1,9 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"strings"
-
 	"backup/domain"
 )
 
@@ -55,16 +52,18 @@ func displayBadHashes(appConfig domain.Config, objectsList []*domain.FileInfo) b
 	return failedHashCount >= appConfig.MaxAllowedHashFailures()
 }
 
-//displays stats regarding files that were stored ort failed to store. Also returns a formmatted string of all failed files
-func displayStorageStats(appConfig domain.Config, objectsList []*domain.FileInfo) string {
+//displays stats regarding files that were stored or failed to store. Also returns details about all failed files
+func displayStorageStats(appConfig domain.Config, objectsList []*domain.FileInfo) *domain.BackupFailures {
 
 	logger := appConfig.Logger()
 	defer logger.Sync()
 
-	var sb strings.Builder
-	sb.WriteString("\n")
-	sb.WriteString("Failed Files Listing\n")
-	sb.WriteString("--------------------\n")
+	//prep JSON struct to hold failure data
+	failures := &domain.BackupFailures{
+		Bucket:      appConfig.Bucket(),
+		HasFailures: false,
+		FailedPaths: make([]*domain.FileInfo, 0),
+	}
 
 	success := 0
 	failed := 0
@@ -76,12 +75,13 @@ func displayStorageStats(appConfig domain.Config, objectsList []*domain.FileInfo
 			success++
 		} else {
 			failed++
-			sb.WriteString(fmt.Sprintf("%s [%d]\n", o.FullName, o.Size))
+			failures.HasFailures = true
+			failed := o.Copy()
+			failures.FailedPaths = append(failures.FailedPaths, failed)
 		}
 	}
 	logger.Infow("number of objects successfully stored", "count", success, "meta", domain.Stat)
 	logger.Infow("number of storage failures", "count", failed, "meta", domain.Stat)
 
-	sb.WriteString("\n")
-	return sb.String()
+	return failures
 }

@@ -18,6 +18,7 @@ const (
 	defaultDryrunBucket         = "dryrun-2155"
 	defaultExclusionsFile       = "exclusions.txt"
 	defaultBackupDirectivesFile = "backup.txt"
+	defaultFailureOutputFile    = "failures.json"
 	defaultSharedProfile        = "s3-only"
 	defaultAwsRegion            = "us-east-2"
 
@@ -38,6 +39,8 @@ type Config interface {
 	Region() string
 	AwsProfile() string
 	Bucket() string
+
+	FailuresFilepath() string
 
 	Dryrun() bool
 	Logger() *zap.SugaredLogger
@@ -66,6 +69,7 @@ type appConfig struct {
 	logger                        *zap.SugaredLogger
 	exclusionsFile                string
 	backupFile                    string
+	failuresFile                  string
 	exclusions                    []*Exclusion
 	basePaths                     []string
 	fileCountEstimate             int
@@ -110,6 +114,11 @@ func (ac *appConfig) Dryrun() bool {
 //Logger returns the logger
 func (ac *appConfig) Logger() *zap.SugaredLogger {
 	return ac.logger
+}
+
+//FailuresFilename returns the path  of the file where failures will be stored
+func (ac *appConfig) FailuresFilepath() string {
+	return ac.failuresFile
 }
 
 //Exclusions returns all exclusions in the exclusions file
@@ -281,6 +290,7 @@ func (ac *appConfig) String() string {
 	sb.WriteString(fmt.Sprintf("Dryrun Bucket: %s\n", ac.dryrunBucket))
 	sb.WriteString(fmt.Sprintf("Dryrun Enabled: %t\n", ac.dryrun))
 	sb.WriteString(fmt.Sprintf("Exclusions File: %s\n", ac.exclusionsFile))
+	sb.WriteString(fmt.Sprintf("Failures File: %s\n", ac.failuresFile))
 	sb.WriteString(fmt.Sprintf("Exclusions Count: %d\n", len(ac.exclusions)))
 	sb.WriteString(fmt.Sprintf("Base Paths: %s\n", ac.basePaths))
 	sb.WriteString(fmt.Sprintf("AWS Profile: %s\n", ac.awsProfile))
@@ -305,6 +315,7 @@ func newConfig(cmdOpts *CommandOpts) (*appConfig, error) {
 		dryrun:                        cmdOpts.Dryrun,
 		exclusionsFile:                defaultExclusionsFile,
 		backupFile:                    defaultBackupDirectivesFile,
+		failuresFile:                  defaultFailureOutputFile,
 		fileCountEstimate:             defaultFileCountEstimate,
 		hashRoutines:                  defaultHashRoutines,
 		maxHashChannelErrorAllowed:    defaultHashEffortChannelMaxErrorCount,

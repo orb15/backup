@@ -21,3 +21,15 @@ type FileInfo struct {
 	//StorageSuccess is set true if the local object has been confirmed to be stored in AWS S3
 	StorageSuccess bool
 }
+
+//Copy returns a deep copy of the current FileINfo object
+func (fi FileInfo) Copy() *FileInfo {
+	return &FileInfo{
+		FullName:       fi.FullName,
+		Size:           fi.Size,
+		Excluded:       fi.Excluded,
+		Hash:           fi.Hash,
+		HashSuccess:    fi.HashSuccess,
+		StorageSuccess: fi.StorageSuccess,
+	}
+}
