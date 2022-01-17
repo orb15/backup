@@ -43,6 +43,8 @@ type Config interface {
 	FailuresFilepath() string
 
 	Dryrun() bool
+	Reprocess() bool
+	NoConfirm() bool
 	Logger() *zap.SugaredLogger
 
 	Exclusions() []*Exclusion
@@ -66,6 +68,8 @@ type appConfig struct {
 	awsProfile                    string
 	bucket                        string
 	dryrun                        bool
+	reprocess                     bool
+	noConfirm                     bool
 	logger                        *zap.SugaredLogger
 	exclusionsFile                string
 	backupFile                    string
@@ -109,6 +113,16 @@ func (ac *appConfig) Bucket() string {
 //Dryrun returns true if the user is asking for a dry run
 func (ac *appConfig) Dryrun() bool {
 	return ac.dryrun
+}
+
+//Reprocess returns true if the user is asking to reprocess previously-failed files
+func (ac *appConfig) Reprocess() bool {
+	return ac.reprocess
+}
+
+//NoConfirm returns true if, during reprocessing, the confirmationmenu should be skipped
+func (ac *appConfig) NoConfirm() bool {
+	return ac.noConfirm
 }
 
 //Logger returns the logger
@@ -313,6 +327,8 @@ func newConfig(cmdOpts *CommandOpts) (*appConfig, error) {
 		awsProfile:                    defaultSharedProfile,
 		bucket:                        makeUniqueBucketName(),
 		dryrun:                        cmdOpts.Dryrun,
+		reprocess:                     cmdOpts.Reprocess,
+		noConfirm:                     cmdOpts.NoConfirm,
 		exclusionsFile:                defaultExclusionsFile,
 		backupFile:                    defaultBackupDirectivesFile,
 		failuresFile:                  defaultFailureOutputFile,

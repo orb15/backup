@@ -3,6 +3,9 @@ package domain
 //BackupFailures holds information about failed file transfers for a given transfer/backup attempt
 type BackupFailures struct {
 
+	//DateCreated is the creation date and time of this struct
+	DateCreated string
+
 	//Bucket is the name of the bucket to which the files should have been transferred
 	Bucket string `json:"bucket"`
 

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	"backup/domain"
 )
 
@@ -60,6 +62,7 @@ func displayStorageStats(appConfig domain.Config, objectsList []*domain.FileInfo
 
 	//prep JSON struct to hold failure data
 	failures := &domain.BackupFailures{
+		DateCreated: time.Now().Format(time.RFC822),
 		Bucket:      appConfig.Bucket(),
 		HasFailures: false,
 		FailedPaths: make([]*domain.FileInfo, 0),

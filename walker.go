@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -91,4 +93,83 @@ func skipThisObject(appConfig domain.Config, path string, info os.FileInfo) bool
 	}
 
 	return false
+}
+
+//reprocesses a JSON file listing files that failed to transfer on the last run
+func buildReprocessingList(appConfig domain.Config) ([]*domain.FileInfo, error) {
+
+	//read JSON file
+	jsonBytes, err := os.ReadFile(appConfig.FailuresFilepath())
+	if err != nil {
+		return nil, fmt.Errorf("unable to read JSON failures file: %s because: %v", appConfig.FailuresFilepath(), err)
+	}
+
+	//unmarshall
+	var failures domain.BackupFailures
+	err = json.Unmarshal(jsonBytes, &failures)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal JSON failures file: %s because: %v", appConfig.FailuresFilepath(), err)
+	}
+
+	//no work to do
+	if !failures.HasFailures {
+		return nil, nil
+	}
+
+	//get confirmation unless bypassed by CLI opts
+	if !appConfig.NoConfirm() {
+		runMenu := true
+		var choice int
+		for runMenu {
+			fmt.Println()
+			fmt.Printf("File Reprocessing Menu for Backup Performed On: %s\n", failures.DateCreated)
+			fmt.Println()
+			fmt.Println("1: List Files to reprocess")
+			fmt.Println("2: Reprocess now")
+			fmt.Println("3: Cancel Reprocessing")
+			fmt.Println()
+			fmt.Println("Enter ")
+			_, err := fmt.Scanf("%d", &choice)
+			if err != nil {
+				continue
+			}
+			switch choice {
+			case 1:
+				fmt.Println()
+				for _, f := range failures.FailedPaths {
+					fmt.Println(f)
+				}
+				fmt.Println()
+			case 2:
+				runMenu = false
+				continue
+			case 3:
+				return nil, nil
+			default:
+				continue
+			}
+		}
+	}
+
+	//build file list. Wipe out the old hash and file size
+	fileData := make([]*domain.FileInfo, 0, len(failures.FailedPaths))
+
+	for _, f := range failures.FailedPaths {
+		fi := &domain.FileInfo{
+			FullName:       f.FullName,
+			Hash:           "",
+			Excluded:       false,
+			HashSuccess:    false,
+			StorageSuccess: false,
+		}
+
+		fileInfo, err := os.Stat(f.FullName)
+		if err != nil {
+			return nil, fmt.Errorf("unable to stat file: %s because: %v", f.FullName, err)
+		}
+		fi.Size = fileInfo.Size()
+		fileData = append(fileData, fi)
+	}
+
+	return fileData, nil
 }
